@@ -47,7 +47,7 @@ This project implements a monitoring and control system using an Arduino board w
 
 - **LED Control:** Use the `/index.htm` page to control the LEDs.
 - **Door Control:** Use the `/index.htm` page to open/close the servo-controlled door.
-- **Temperature Monitoring:** Access temperature information using the `/index.htm` or `/tps.htm` pages.
+- **Temperature Monitoring:** Access temperature information using the `/tps.htm` pages.
 
 ## Gas Emergency System
 
@@ -73,5 +73,10 @@ This project implements a monitoring and control system using an Arduino board w
 ## Note
 
 - Ensure that the required HTML files (`index.htm` and `tps.htm`) are present on the SD card.
+- The project assumes a local network setup with a static IP address (`192.168.1.10` in the provided code). Adjust the IP address based on your network configuration.
+
+## Author
+
+[Michael Nabil](https://github.com/michaelnabil230)
 
 Feel free to customize the code and adapt it to your specific requirements. For further assistance, refer to the Arduino documentation and the libraries used in the project.
