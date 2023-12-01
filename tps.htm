@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta http-equiv="Content-Type" content="application/vnd.wap.xhtml+xml; charset=utf-8" />
+    <title>Control Device Via Internet for temperatures</title>
+    <style type="text/css">
+        body {
+            background-color: #00676b;
+            background: linear-gradient(top, #cae5e8 0%, #00676b 100%);
+            background: -o-linear-gradient(top, #cae5e8 #00676b);
+            background: -moz-linear-gradient(top, #cae5e8, #00676b);
+            background: -webkit-gradient(linear,
+                    left top,
+                    left bottom,
+                    from(#cae5e8),
+                    to(#00676b));
+            filter: progid:DXImageTransform.Microsoft.gradient(startColorstr='#CAE5E8', endColorstr='#00676B');
+            background: -ms-linear-gradient(top, #cae5e8, #00676b);
+            background-attachment: fixed;
+            border: 0px;
+            margin: 0px;
+            padding: 0px;
+            color: #000000;
+            font-family: Sans Serif, Arial Western, Verdana;
+            font-size: small;
+            text-align: center;
+            align: center;
+        }
+
+        table {
+            border: 0px;
+            width: 60%;
+            align: center;
+            text-align: center;
+            padding: 0px;
+            vertical-align: middle;
+            border-spacing: 0px;
+        }
+
+        tr {
+            height: 40px;
+        }
+
+        th {
+            background-color: #c8e2b1;
+            height: 50px;
+        }
+
+        .trh1 {
+            background-color: #cae5e8;
+        }
+
+        .trh1:hover {
+            background-color: #e6f1d8;
+        }
+
+        .trh2 {
+            background-color: #99d1d3;
+        }
+
+        .trh2:hover {
+            background-color: #e6f1d8;
+        }
+
+        h1 {
+            margin: 25px;
+            font-family: Arial Western, Verdana;
+            font-size: 20pt;
+            font-weight: bold;
+            color: #ccffff;
+            border: 0px;
+        }
+
+        h6 {
+            font-size: 10pt;
+            font-weight: normal;
+            color: #000000;
+            margin: 20px;
+        }
+    </style>
+</head>
+
+<body onload="getTemperatureValues()" align="center">
+    <table align="center" id="mainTable">
+        <tr>
+            <th width="50%">Temperature number</th>
+            <th width="50%">Temperature</th>
+        </tr>
+
+        <tr>
+            <td>Temperature 1</td>
+            <td id="temperature-1"></td>
+        </tr>
+
+        <tr>
+            <td>Temperature 2</td>
+            <td id="temperature-2"></td>
+        </tr>
+
+        <tr>
+            <td>Temperature 3</td>
+            <td id="temperature-3"></td>
+        </tr>
+
+        <tr>
+            <td>Temperature 4</td>
+            <td id="temperature-4"></td>
+        </tr>
+    </table>
+</body>
+
+<script>
+    function getTemperatureValues() {
+        var request = new XMLHttpRequest();
+        request.onreadystatechange = function () {
+            var responseXML = this.responseXML;
+
+            if (this.readyState != 4 || responseXML == null) {
+                return;
+            }
+
+            document.getElementById("temperature-1").innerHTML = responseXML.getElementsByTagName("Temperature1")[0].childNodes[0].nodeValue + ' C';
+            document.getElementById("temperature-2").innerHTML = responseXML.getElementsByTagName("Temperature2")[0].childNodes[0].nodeValue + ' C';
+            document.getElementById("temperature-3").innerHTML = responseXML.getElementsByTagName("Temperature3")[0].childNodes[0].nodeValue + ' C';
+            document.getElementById("temperature-4").innerHTML = responseXML.getElementsByTagName("Temperature4")[0].childNodes[0].nodeValue + ' C';
+
+            getTemperatureValues();
+        };
+
+        request.open("GET", "temp", true);
+        request.send(null)
+    }
+</script>
+
+</html>

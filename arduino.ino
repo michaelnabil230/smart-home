@@ -1,22 +1,17 @@
+#include <DHT.h>
 #include <SPI.h>
 #include <Ethernet.h>
-#include <DHT.h>
 #include <SD.h>
 #include <Servo.h>
-#define REQ_BUF_SZ 50
 
 Servo servo;
 int posServo = 0;
 
-byte mac[] = {0x00, 0xAA, 0xBB, 0xCC, 0xDE, 0x02};
+byte mac[] = { 0x00, 0xAA, 0xBB, 0xCC, 0xDE, 0x02 };
 IPAddress ip(192, 168, 1, 10);
 EthernetServer server(80);
 
-boolean ledState[4] = {0};
-
-File webFile;
-char HTTP_req[REQ_BUF_SZ] = {0};
-char requestIndex = 0;
+String request = "";
 
 int temperature1 = 30;
 int temperature2 = 31;
@@ -27,9 +22,9 @@ int led1 = 34;
 int led2 = 35;
 int led3 = 36;
 int led4 = 37;
+boolean ledState[4] = { 0 };  // TODO: Can remove this line and use `digitalRead` for get the state led
 
 int servoMotor = 22;
-
 int fireAlarm = 23;
 int waterPump = 24;
 int fan = 25;
@@ -42,7 +37,6 @@ DHT dht4(temperature4, DHT11);
 
 void setup() {
   servo.attach(servoMotor);
-
   pinMode(10, OUTPUT);
   digitalWrite(10, HIGH);
   Serial.begin(9600);
@@ -55,24 +49,27 @@ void setup() {
   }
 
   Serial.println(F("SD card initialized"));
-
-  if (!SD.exists("index.html")) {
-    Serial.println(F("Can't find index.html file!"));
+  if (!SD.exists("index.htm")) {
+    Serial.println(F("Can't find index.htm file!"));
     return;
   }
 
-  Serial.println(F("Found index.html file."));
+  if (!SD.exists("tps.htm")) {
+    Serial.println(F("Can't find tps.htm file!"));
+    return;
+  }
 
+  Serial.println(F("Found index.htm and tps.htm file."));
   Ethernet.begin(mac, ip);
   server.begin();
+
   Serial.print(F("Server is at "));
   Serial.println(Ethernet.localIP());
   Ethernet.begin(mac, ip);
-  server.begin();
 
   initializationPins();
-  initializationTemps();
-  runAlarmFirstTime();
+  initializationTemperatures();
+  activateAlarmWithInterval(fireAlarm, 1, 1000);
 }
 
 void initializationPins() {
@@ -86,88 +83,55 @@ void initializationPins() {
   pinMode(gas, INPUT);
 }
 
-void initializationTemps() {
+void initializationTemperatures() {
   dht1.begin();
   dht2.begin();
   dht3.begin();
   dht4.begin();
 }
 
-void runAlarmFirstTime() {
-  digitalWrite(fireAlarm, HIGH);
-  delay(1000);
-  digitalWrite(fireAlarm, LOW);
-  delay(1000);
-  digitalWrite(fireAlarm, HIGH);
-  delay(1000);
-  digitalWrite(fireAlarm, LOW);
-}
-
 void loop() {
   runServer();
-
   checkGas();
-
   temperatures();
 }
 
 void runServer() {
   EthernetClient client = server.available();
 
-  if (client)
-  {
+  if (client) {
     boolean currentLineIsBlank = true;
-    while (client.connected())
-    {
-      if (client.available())
-      {
+    while (client.connected()) {
+      if (client.available()) {
         char c = client.read();
-        if (requestIndex < (REQ_BUF_SZ - 1))
-        {
-          HTTP_req[requestIndex] = c;
-          requestIndex++;
-        }
+        request.concat(c);
 
-        if (c == '\n' && currentLineIsBlank)
-        {
+        if (c == '\n' && currentLineIsBlank) {
           client.println(F("HTTP/1.1 200 OK"));
 
-          if (strContains(HTTP_req, "ajax_inputs"))
-          {
-            client.println(F("Content-Type: text/xml"));
-            client.println(F("Connection: keep-alive"));
-            client.println();
-            setLEDs();
-            setDoor();
-            response(client);
+          if (strContains(request, "leds")) {
+            sendCommonHeaders(client, "text/xml");
+            setLEDs(request);
+            responseLeds(client);
+          } else if (strContains(request, "door")) {
+            sendCommonHeaders(client, "text/xml");
+            setDoor(request);
+            responseDoor(client);
+          } else if (strContains(request, "temp")) {
+            sendCommonHeaders(client, "text/xml");
+            responseTemperatures(client);
+          } else if (strContains(request, "tps")) {
+            sendHtmlResponse(client, "tps.htm");
+          } else {
+            sendHtmlResponse(client, "index.htm");
           }
-          else
-          {
-            client.println(F("Content-Type: text/html"));
-            client.println(F("Connection: keep-alive"));
-            client.println();
-            webFile = SD.open("index.html");
-            if (webFile)
-            {
-              while (webFile.available())
-              {
-                client.write(webFile.read());
-              }
-              webFile.close();
-            }
-          }
-          Serial.print(HTTP_req);
-          requestIndex = 0;
-          strClear(HTTP_req, REQ_BUF_SZ);
+          request = "";
           break;
         }
 
-        if (c == '\n')
-        {
+        if (c == '\n') {
           currentLineIsBlank = true;
-        }
-        else if (c != '\r')
-        {
+        } else if (c != '\r') {
           currentLineIsBlank = false;
         }
       }
@@ -177,183 +141,171 @@ void runServer() {
   }
 }
 
-void checkGas() {
-  if (analogRead(gas) > 100) {
-    digitalWrite(fan, HIGH);
-    digitalWrite(fireAlarm, HIGH);
-    delay(1000);
-    digitalWrite(fireAlarm, LOW);
-    delay(1000);
-    digitalWrite(fireAlarm, HIGH);
-    delay(1000);
-    digitalWrite(fireAlarm, LOW);
-    delay(1000);
-    digitalWrite(fireAlarm, HIGH);
-  } else {
-    digitalWrite(fan, LOW);
-    digitalWrite(fireAlarm, LOW);
+void sendCommonHeaders(EthernetClient client, String contentType) {
+  client.println(String("Content-Type: " + contentType));
+  client.println(F("Connection: keep-alive"));
+  client.println();
+}
+
+void sendHtmlResponse(EthernetClient client, String fileName) {
+  Serial.println(String("Open HTML file: " + fileName));
+  sendCommonHeaders(client, "text/html");
+  File webFile = SD.open(fileName);
+  if (webFile) {
+    while (webFile.available()) {
+      client.write(webFile.read());
+    }
+    webFile.close();
   }
+}
+
+void checkGas() {
+  int gasReading = analogRead(gas);
+  Serial.println(gasReading);
+  if (gasReading > 220) {
+    activateGasEmergencySystem();
+  } else {
+    deactivateGasEmergencySystem();
+  }
+}
+
+void activateGasEmergencySystem() {
+  digitalWrite(fan, HIGH);
+  digitalWrite(led4, HIGH);
+  activateAlarmWithInterval(fireAlarm, 3, 1000);
+}
+
+void deactivateGasEmergencySystem() {
+  digitalWrite(fan, LOW);
+  digitalWrite(fireAlarm, LOW);
+  digitalWrite(led4, LOW);
 }
 
 void temperatures() {
-  float temperature1 = dht1.readTemperature();
-  float temperature2 = dht2.readTemperature();
-  float temperature3 = dht3.readTemperature();
-  float temperature4 = dht4.readTemperature();
 
-  if (temperature3 > 33 || temperature4 > 33 || temperature2 > 33 || temperature1 > 33) {
-    digitalWrite(fan, HIGH);
-    digitalWrite(fireAlarm, HIGH);
-    delay(1000);
-    digitalWrite(fireAlarm, LOW);
-    delay(1000);
-    digitalWrite(fireAlarm, HIGH);
-    delay(1000);
-    digitalWrite(fireAlarm, LOW);
-    delay(1000);
-    digitalWrite(fireAlarm, HIGH);
-    digitalWrite(waterPump, HIGH);
+  bool isAnyTemperatureExceedingThreshold = dht1.readTemperature() > 33 || dht2.readTemperature() > 33 || dht3.readTemperature() > 33 || dht4.readTemperature() > 33;
+
+  if (isAnyTemperatureExceedingThreshold) {
+    activateTemperatureEmergencySystem();
+  }
+
+  // float temperatures[] = { dht1.readTemperature(), dht2.readTemperature(),
+  //                          dht3.readTemperature(), dht4.readTemperature() };
+  // bool isAnyTemperatureExceedingThreshold = std::any_of(
+  //   std::begin(temperatures), std::end(temperatures),
+  //   [](float temp) {
+  //     return temp > 33;
+  //   });
+  // if (isAnyTemperatureExceedingThreshold) {
+  //   activateTemperatureEmergencySystem();
+  // }
+}
+
+void activateTemperatureEmergencySystem() {
+  digitalWrite(fan, HIGH);
+  digitalWrite(waterPump, HIGH);
+  activateAlarmWithInterval(fireAlarm, 3, 1000);
+}
+
+void activateAlarmWithInterval(int pin, int cycles, int interval) {
+  for (int i = 0; i < cycles; i++) {
+    digitalWrite(pin, HIGH);
+    delay(interval);
+    digitalWrite(pin, LOW);
+    delay(interval);
   }
 }
 
-void setLEDs() {
+void setLEDs(String request) {
   // LED 1 (pin 34)
-  if (strContains(HTTP_req, "LED1=1")) {
-    ledState[0] = 1;
+  if (strContains(request, "LED1=1")) {
+    ledState[0] = true;
     digitalWrite(led1, HIGH);
   }
-
-  if (strContains(HTTP_req, "LED1=0")) {
-    ledState[0] = 0;
+  if (strContains(request, "LED1=0")) {
+    ledState[0] = false;
     digitalWrite(led1, LOW);
   }
 
   // LED 2 (pin 35)
-  if (strContains(HTTP_req, "LED2=1")) {
-    ledState[1] = 1;
+  if (strContains(request, "LED2=1")) {
+    ledState[1] = true;
     digitalWrite(led2, HIGH);
   }
-
-  if (strContains(HTTP_req, "LED2=0")) {
-    ledState[1] = 0;
+  if (strContains(request, "LED2=0")) {
+    ledState[1] = false;
     digitalWrite(led2, LOW);
   }
 
   // LED 3 (pin 36)
-  if (strContains(HTTP_req, "LED3=1")) {
-    ledState[2] = 1;
+  if (strContains(request, "LED3=1")) {
+    ledState[2] = true;
     digitalWrite(led3, HIGH);
   }
-
-  if (strContains(HTTP_req, "LED3=0")) {
-    ledState[2] = 0;
+  if (strContains(request, "LED3=0")) {
+    ledState[2] = false;
     digitalWrite(led3, LOW);
-  }
-
-  // LED 4 (pin 37)
-  if (strContains(HTTP_req, "LED4=1")) {
-    ledState[3] = 1;
-    digitalWrite(led4, HIGH);
-  }
-
-  if (strContains(HTTP_req, "LED4=0")) {
-    ledState[3] = 0;
-    digitalWrite(led4, LOW);
-  }
-
-  // fan (pin 38)
-  if (strContains(HTTP_req, "LED5=1")) {
-    ledState[4] = 1;
-    digitalWrite(fan, HIGH);
-  }
-
-  if (strContains(HTTP_req, "LED5=0")) {
-    ledState[4] = 0;
-    digitalWrite(fan, LOW);
   }
 }
 
-void setDoor() {
-  if (strContains(HTTP_req, "DOOR=1")) {
+String doorIsOpen = "on";
+
+void setDoor(String request) {
+  if (strContains(request, "DOOR=1")) {
     for (posServo = 180; posServo >= 0; posServo -= 5) {
       servo.write(posServo);
     }
+
+    doorIsOpen = "on";
+
+    Serial.println("Is open servo");
   }
 
-  if (strContains(HTTP_req, "DOOR=0")) {
+  if (strContains(request, "DOOR=0")) {
     for (posServo = 0; posServo <= 100; posServo += 5) {
       servo.write(posServo);
     }
+
+    doorIsOpen = "off";
+
+    Serial.println("Is close servo");
   }
 }
 
-void response(EthernetClient cl) {
-  cl.print(F("<?xml version = \"1.0\" ?>"));
-  cl.print(F("<inputs>"));
-
+void responseLeds(EthernetClient client) {
+  client.print(F("<?xml version = \"1.0\" ?>"));
+  client.print(F("<inputs>"));
   // Iterate over the LED states array
-  for (int i = 0; i < 5; i++) {
-    cl.print(F("<LED>"));
-    cl.print(ledState[i]);
-    cl.println(F("</LED>"));
+  for (int i = 1; i < 4; i++) {
+    printResponseTag(client, "LED" + String(i), ledState[i] ? "on" : "off");
   }
-
-  // Temp 1
-  cl.print("<Temp1>");
-  cl.print(dht1.readTemperature());
-  cl.print("</Temp1>");
-
-  // Temp 2
-  cl.print("<Temp2>");
-  cl.print(dht2.readTemperature());
-  cl.print("</Temp2>");
-
-  // Temp 3
-  cl.print("<Temp3>");
-  cl.print(dht3.readTemperature());
-  cl.print("</Temp3>");
-
-  // Temp 4
-  cl.print("<Temp4>");
-  cl.print(dht4.readTemperature());
-  cl.print("</Temp4>");
-
-  cl.print(F("</inputs>"));
+  client.print(F("</inputs>"));
 }
 
-void strClear(char *str, char length) {
-  for (int i = 0; i < length; i++)
-  {
-    str[i] = 0;
-  }
+void responseDoor(EthernetClient client) {
+  client.print(F("<?xml version = \"1.0\" ?>"));
+  client.print(F("<inputs>"));
+  printResponseTag(client, "DOOR", doorIsOpen);
+  client.print(F("</inputs>"));
 }
 
-char strContains(char *str, char *sfind) {
-  char found = 0;
-  char index = 0;
-  char len;
-
-  len = strlen(str);
-
-  if (strlen(sfind) > len)
-  {
-    return 0;
+void responseTemperatures(EthernetClient client) {
+  client.print(F("<?xml version = \"1.0\" ?>"));
+  client.print(F("<inputs>"));
+  float temperatures[] = { dht1.readTemperature(), dht2.readTemperature(),
+                           dht3.readTemperature(), dht4.readTemperature() };
+  for (int i = 0; i < sizeof(temperatures); i++) {
+    printResponseTag(client, "Temperature" + String(i + 1), String(temperatures[i]));
   }
-  while (index < len)
-  {
-    if (str[index] == sfind[found])
-    {
-      found++;
-      if (strlen(sfind) == found)
-      {
-        return 1;
-      }
-    }
-    else
-    {
-      found = 0;
-    }
-    index++;
-  }
-  return 0;
+  client.print(F("</inputs>"));
+}
+
+void printResponseTag(EthernetClient client, String label, String value) {
+  client.print("<" + label + ">");
+  client.print(value);
+  client.print("</" + label + ">");
+}
+
+boolean strContains(String str, String sfind) {
+  return str.indexOf(sfind) != -1;
 }

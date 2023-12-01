@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta http-equiv="Content-Type" content="application/vnd.wap.xhtml+xml; charset=utf-8" />
+    <title>Control Device Via Internet for leds</title>
+    <style type="text/css">
+        body {
+            background-color: #00676b;
+            background: linear-gradient(top, #cae5e8 0%, #00676b 100%);
+            background: -o-linear-gradient(top, #cae5e8 #00676b);
+            background: -moz-linear-gradient(top, #cae5e8, #00676b);
+            background: -webkit-gradient(linear,
+                    left top,
+                    left bottom,
+                    from(#cae5e8),
+                    to(#00676b));
+            filter: progid:DXImageTransform.Microsoft.gradient(startColorstr='#CAE5E8', endColorstr='#00676B');
+            background: -ms-linear-gradient(top, #cae5e8, #00676b);
+            background-attachment: fixed;
+            border: 0px;
+            margin: 0px;
+            padding: 0px;
+            color: #000000;
+            font-family: Sans Serif, Arial Western, Verdana;
+            font-size: small;
+            text-align: center;
+            align: center;
+        }
+
+        table {
+            border: 0px;
+            width: 60%;
+            align: center;
+            text-align: center;
+            padding: 0px;
+            vertical-align: middle;
+            border-spacing: 0px;
+        }
+
+        tr {
+            height: 40px;
+        }
+
+        th {
+            background-color: #c8e2b1;
+            height: 50px;
+        }
+
+        .trh1 {
+            background-color: #cae5e8;
+        }
+
+        .trh1:hover {
+            background-color: #e6f1d8;
+        }
+
+        .trh2 {
+            background-color: #99d1d3;
+        }
+
+        .trh2:hover {
+            background-color: #e6f1d8;
+        }
+
+        h1 {
+            margin: 25px;
+            font-family: Arial Western, Verdana;
+            font-size: 20pt;
+            font-weight: bold;
+            color: #ccffff;
+            border: 0px;
+        }
+
+        h6 {
+            font-size: 10pt;
+            font-weight: normal;
+            color: #000000;
+            margin: 20px;
+        }
+
+        .button {
+            background-color: #293f5e;
+            color: #ffffff;
+            padding: 4px 35px 4px 35px;
+            text-align: center;
+            margin: 0px;
+            font-family: Arial Western, sans-serif;
+            font-weight: bold;
+            text-decoration: none;
+            -moz-border-radius: 5px;
+            -webkit-border-radius: 5px;
+            -o-border-radius: 5px;
+            border-radius: 5px;
+            border-color: black;
+            border-top: 2px solid;
+            border-bottom: 2px solid;
+            border-right: 2px solid;
+            border-left: 2px solid;
+        }
+
+        .button:link {
+            background-color: #293f5e;
+            color: #ffffff;
+        }
+
+        .button:visited {
+            background-color: #293f5e;
+            color: #ffffff;
+        }
+
+        .button:hover {
+            background-color: red;
+            color: #ffffff;
+        }
+
+        .button:active {
+            background-color: red;
+            color: #ffffff;
+        }
+    </style>
+</head>
+
+<body>
+    <button class="button" type="button" id="door" data-states="0">
+        Off
+    </button>
+
+    <table id="mainTable" align="center">
+        <tr>
+            <th width="50%">Led</th>
+            <th width="50%">On or Off</th>
+        </tr>
+
+        <tr class="trh1">
+            <td>LED1</td>
+            <td>
+                <button class="button button-led" type="button" id="led-1" data-states="0" data-num="1">
+                    Off
+                </button>
+            </td>
+        </tr>
+
+        <tr class="trh2">
+            <td>LED2</td>
+            <td>
+                <button class="button button-led" type="button" id="led-2" data-states="0" data-num="2">
+                    Off
+                </button>
+            </td>
+        </tr>
+
+        <tr class="trh1">
+            <td>LED3</td>
+            <td>
+                <button class="button button-led" type="button" id="led-3" data-states="0" data-num="3">
+                    Off
+                </button>
+            </td>
+        </tr>
+    </table>
+</body>
+
+<script>
+    function buttonPressed(e) {
+        var num = e.target.dataset.num;
+
+        var states = e.target.dataset.states;
+
+        var stat = states === "1" ? "0" : "1";
+        e.target.dataset.states = stat;
+
+        var request = new XMLHttpRequest();
+
+        request.open("GET", "leds" + `&LED${num}=${stat}`, true);
+
+        request.onreadystatechange = function () {
+            var responseXML = this.responseXML;
+
+            if (this.readyState != 4 || responseXML == null) {
+                return;
+            }
+
+            document.getElementById("led-1").innerHTML = responseXML.getElementsByTagName("LED1")[0].childNodes[0].nodeValue;
+            document.getElementById("led-2").innerHTML = responseXML.getElementsByTagName("LED2")[0].childNodes[0].nodeValue;
+            document.getElementById("led-3").innerHTML = responseXML.getElementsByTagName("LED3")[0].childNodes[0].nodeValue;
+        };
+
+        request.send(null);
+    }
+
+    const buttons = document.getElementsByClassName("button-led");
+
+    for (let button of buttons) {
+        button.addEventListener("click", buttonPressed);
+    }
+
+    const door = document.getElementById("door");
+    door.addEventListener("click", doorPressed);
+
+    function doorPressed(e) {
+        var states = e.target.dataset.states;
+
+        var stat = states === "1" ? "0" : "1";
+        e.target.dataset.states = stat;
+
+        var request = new XMLHttpRequest();
+
+        request.open("GET", "door" + `&DOOR=${stat}`, true);
+
+        request.onreadystatechange = function () {
+            var responseXML = this.responseXML;
+
+            if (this.readyState != 4 || responseXML == null) {
+                return;
+            }
+
+            door.innerHTML = responseXML.getElementsByTagName("DOOR")[0].childNodes[0].nodeValue;
+        };
+
+        request.send(null);
+    }
+
+</script>
+
+</html>
